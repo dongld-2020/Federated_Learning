@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Client-Side Training</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body>
+    <h1>Client-Side Training</h1>
+    <button onclick="trainAndSendModel()">Train and Send Model</button>
+    <div id="responseDiv"></div>
+
+    <script>
+        var socket = io.connect('http://' + document.domain + ':' + location.port);
+        var model;
+		var responseDiv = document.getElementById('responseDiv');
+		
+        async function trainAndSendModel() {
+			// Empty responsive Div
+			responseDiv.innerHTML = '';
+			
+            // Generate example training data
+			const xTrain = tf.tensor([[[1], [2], [3], [4], [5], [6], [7], [8], [9], [10]]]);
+			const yTrain = tf.tensor([[[2], [4], [6], [8], [10], [12], [14], [16], [18], [20]]]);
+
+            // Define a more complex LSTM model
+            model = tf.sequential();
+            model.add(tf.layers.lstm({ units: 5, returnSequences: true, inputShape: [10, 1] }));
+            model.add(tf.layers.lstm({ units: 5, returnSequences: true }));
+            model.add(tf.layers.dense({ units: 1 }));
+
+            model.compile({ optimizer: 'sgd', loss: 'meanSquaredError' });
+
+            // Train the model with progress updates
+            await model.fit(xTrain, yTrain, {
+                epochs: 100,
+                callbacks: {
+                    onEpochEnd: (epoch, logs) => {
+                        // Display the training progress
+                        updateTrainingProgress(epoch, logs.loss);
+                        if (epoch === 99) {
+                            // Training completed
+                            sendModelWeights(model);
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateTrainingProgress(epoch, loss) {            
+            responseDiv.innerHTML += `Epoch: ${epoch + 1}, Loss: ${loss.toFixed(4)}<br>`;
+        }
+
+        function sendModelWeights(model) {
+            const modelWeights = [];
+            model.getWeights().forEach(weight => {
+                modelWeights.push(weight.arraySync());
+            });
+            socket.emit('send_model_weights', { modelWeights });
+        }
+
+        socket.on('global_update', function(data) {
+            var responseDiv = document.getElementById('responseDiv');
+            responseDiv.innerHTML += '<p>' + data + '</p>';
+        });
+    </script>
+</body>
+</html>
